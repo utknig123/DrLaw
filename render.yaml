@@ -2,17 +2,16 @@ services:
   - type: web
     name: drlaw-backend
     env: python
+    runtime: python
     plan: free
     rootDir: backend
     buildCommand: ./build.sh
     startCommand: gunicorn wsgi:app --workers=2 --timeout=300
+    pythonVersion: 3.11.16
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.16
       - key: BACKEND_URL
         fromService:
           name: drlaw-backend
           type: web
           property: url
     autoDeploy: true
-
