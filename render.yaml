@@ -3,12 +3,12 @@ services:
     name: drlaw-backend
     env: python
     plan: free
-    rootDir: DRLAW/backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn wsgi:app --workers=2 --timeout=120
+    rootDir: backend
+    buildCommand: ./build.sh
+    startCommand: gunicorn wsgi:app --workers=2 --timeout=300
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10.13
+        value: 3.11.16
       - key: BACKEND_URL
         fromService:
           name: drlaw-backend
