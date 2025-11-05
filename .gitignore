@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+storage/
+*.env.local
+.env.production
+
+.venv
+
+/backend/.venv
+/backend/.env
+
