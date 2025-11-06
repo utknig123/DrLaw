@@ -182,11 +182,11 @@ class RAGSystem:
             print("Loading sentence transformer model...")
 
             # Force specific model format to prevent downloading all formats
-            os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
-            os.environ['TRANSFORMERS_OFFLINE'] = '0'
+            #os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
+            #os.environ['TRANSFORMERS_OFFLINE'] = '0'
 
-            self.embedding_model = SentenceTransformer('paraphrase-albert-small-v2',
-                                                       device='cpu'
+            self.embedding_model = SentenceTransformer('paraphrase-albert-small-v2'
+                                                      # device='cpu'
                                                        )
                                                         # Smaller model
             print("Model loaded successfully")
@@ -200,26 +200,25 @@ class RAGSystem:
     
     def load_or_create_index(self):
         """Load existing index and chunks or create new ones"""
+        # NUCLEAR OPTION: Always create fresh index
         try:
-            if os.path.exists(self.index_path) and os.path.exists(self.metadata_path):
-                self.index = faiss.read_index(self.index_path)
-                with open(self.metadata_path, 'r') as f:
-                    self.chunks = json.load(f)
-                print(f"Loaded existing index with {self.index.ntotal} vectors")
-            else:
-                # Create efficient index type
-                dimension = 384
-                nlist = 50  # Reduced clusters for memory
-                quantizer = faiss.IndexFlatL2(dimension)
-                self.index = faiss.IndexIVFFlat(quantizer, dimension, nlist)
-                self.chunks = []
-                print("Created new efficient FAISS index")
-        except Exception as e:
-            print(f"Error loading index: {e}. Creating new one.")
-            dimension = 384
-            quantizer = faiss.IndexFlatL2(dimension)
-            self.index = faiss.IndexIVFFlat(quantizer, dimension, 50)
-            self.chunks = []
+            if os.path.exists(self.index_path):
+                os.remove(self.index_path)
+            if os.path.exists(self.metadata_path):
+                os.remove(self.metadata_path)
+        except:
+            pass
+        
+        # Always create new index with correct dimensions
+        self.load_embedding_model()
+        test_embedding = self.embedding_model.encode(["test"])
+        dimension = test_embedding.shape[1]
+        
+        nlist = 50
+        quantizer = faiss.IndexFlatL2(dimension)
+        self.index = faiss.IndexIVFFlat(quantizer, dimension, nlist)
+        self.chunks = []
+        print(f"Created fresh FAISS index with dimension: {dimension}")
     
     def save_index_and_chunks(self):
         """Save the FAISS index and chunks metadata"""
@@ -347,19 +346,15 @@ Response should be in {output_language}."""
 # Initialize RAG system with Supabase client
 rag = RAGSystem(api_key=API_KEY, supabase_client=supabase)
 
-# Process PDFs from Supabase storage
+# Process PDFs from Supabase storage at startup
 def initialize_rag_system():
-    """Initialize RAG system gradually to avoid memory peaks"""
+    """Initialize RAG system by processing PDFs from Supabase"""
     print("Initializing RAG system...")
     
     pdf_files = ["constitution.pdf"]
-#                  "1.pdf", "2.pdf","3.pdf","4.pdf","5.pdf","6.pdf",
-#                 "7.pdf","8.pdf","9.pdf","10.pdf","11.pdf","12.pdf","13.pdf","14.pdf",
-#                 "15.pdf","16.pdf","17.pdf","18.pdf","19.pdf","20.pdf","21.pdf","22.pdf",
-#                "23.pdf","24.pdf","25.pdf","26.pdf","27.pdf","28.pdf","29.pdf","30.pdf"]
     
     for pdf_file in pdf_files:
-        print(f"Processing {pdf_file}...")
+        print(f"Processing {pdf_file} from Supabase...")
         result = rag.download_and_process_pdf(pdf_file)
         print(result)
 
@@ -544,7 +539,7 @@ def chat_history():
     history = get_chat_history(session['user_id'])
     return jsonify([dict(row) for row in history])
 
-# Initialize RAG system on app startup
+# Initialize RAG system on app startup - PROCESS PDF FROM SUPABASE
 with app.app_context():
     initialize_rag_system()
 
@@ -552,8 +547,3 @@ with app.app_context():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
-
-
-
-
-
