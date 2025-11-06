@@ -41,7 +41,7 @@ key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
 # Get URLs from environment variables
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://drlaw.onrender.com')
 BACKEND_URL = os.environ.get('BACKEND_URL', 'https://drlaw.onrender.com')
 
 # Initialize OAuth
