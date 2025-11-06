@@ -9,14 +9,17 @@ echo "[build.sh] Python: $(python -V 2>&1)"
 python -m pip install --upgrade pip
 python -m pip install setuptools==75.3.0 wheel==0.44.0 build
 
-echo "[build.sh] Installing numpy compatible with faiss first (1.24.4)"
-# Install a numpy version known to be compatible with faiss wheels before installing faiss
-python -m pip install --no-cache-dir numpy==1.24.4 || echo "[build.sh] numpy install failed"
+echo "[build.sh] Cleaning any existing numpy/faiss/torch installs"
+python -m pip uninstall -y numpy faiss faiss-cpu torch torchvision || true
 
-echo "[build.sh] Installing binary packages (faiss-cpu, torch, torchvision)"
-# install binary packages first; continue on failure to show full logs
-python -m pip install --no-cache-dir faiss-cpu==1.12.0 || echo "[build.sh] faiss-cpu install failed"
-python -m pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 || echo "[build.sh] torch/vision install failed"
+echo "[build.sh] Force-installing numpy compatible with faiss first (1.24.4)"
+# Force reinstall numpy so the C extensions match the expected ABI
+python -m pip install --no-cache-dir --force-reinstall numpy==1.24.4 || echo "[build.sh] numpy install failed"
+
+echo "[build.sh] Installing binary packages (faiss-cpu, torch, torchvision) with --no-deps --force-reinstall"
+# Install binary packages without pulling deps (we control numpy via constraints)
+python -m pip install --no-cache-dir --no-deps --force-reinstall faiss-cpu==1.12.0 || echo "[build.sh] faiss-cpu install failed"
+python -m pip install --no-cache-dir --no-deps --force-reinstall torch==2.0.1 torchvision==0.15.2 || echo "[build.sh] torch/vision install failed"
 
 echo "[build.sh] Installing remaining requirements (using constraints.txt)"
 if [ -f constraints.txt ]; then
