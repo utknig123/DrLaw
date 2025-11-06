@@ -180,7 +180,16 @@ class RAGSystem:
         """Lazy load embedding model - memory intensive"""
         if self.embedding_model is None:
             print("Loading sentence transformer model...")
-            self.embedding_model = SentenceTransformer('sentence-transformers/paraphrase-albert-small-v2')  # Smaller model
+
+            # Force specific model format to prevent downloading all formats
+            os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
+            os.environ['TRANSFORMERS_OFFLINE'] = '0'
+
+            self.embedding_model = SentenceTransformer('sentence-transformers/paraphrase-albert-small-v2',
+                                                       device='cpu',
+                                                       use_auth_token=False)
+                                                        # Smaller model
+            print("Model loaded successfully")
     
     def load_llm(self):
         """Lazy load LLM"""
