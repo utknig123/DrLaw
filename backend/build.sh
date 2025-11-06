@@ -12,3 +12,10 @@ python -m pip install faiss-cpu==1.12.0 torch==2.0.1 torchvision==0.15.2
 # install the rest
 python -m pip install -r requirements.txt
 
+
+
+
+
+
+
+
