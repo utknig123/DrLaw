@@ -16,10 +16,45 @@ echo "[build.sh] Force-installing numpy compatible with faiss first (1.24.4)"
 # Force reinstall numpy so the C extensions match the expected ABI
 python -m pip install --no-cache-dir --force-reinstall numpy==1.24.4 || echo "[build.sh] numpy install failed"
 
-echo "[build.sh] Installing binary packages (faiss-cpu, torch, torchvision) with --no-deps --force-reinstall"
-# Install binary packages without pulling deps (we control numpy via constraints)
-python -m pip install --no-cache-dir --no-deps --force-reinstall faiss-cpu==1.12.0 || echo "[build.sh] faiss-cpu install failed"
-python -m pip install --no-cache-dir --no-deps --force-reinstall torch==2.0.1 torchvision==0.15.2 || echo "[build.sh] torch/vision install failed"
+echo "[build.sh] Installing faiss-cpu (prefer wheel) and torch packages"
+# Try to install faiss from a wheel first to avoid building from source or triggering incompatible numpy builds
+python -m pip install --upgrade pip
+echo "[build.sh] Attempting wheel install for faiss-cpu"
+if ! python -m pip install --no-cache-dir --only-binary=:all: faiss-cpu==1.12.0; then
+	echo "[build.sh] faiss-cpu wheel install failed; attempting normal install to get better error output"
+	if ! python -m pip install --no-cache-dir faiss-cpu==1.12.0; then
+		echo "[build.sh] faiss-cpu install ultimately failed. Showing diagnostics:" 
+		python -m pip show faiss-cpu || true
+		python -m pip index versions faiss-cpu || true
+		python -m pip freeze | sed -n '1,200p' || true
+		echo "[build.sh] Exiting build due to faiss-cpu install failure"
+		exit 1
+	fi
+fi
+
+echo "[build.sh] Installing torch and torchvision (wheel preferred)"
+if ! python -m pip install --no-cache-dir --only-binary=:all: torch==2.0.1 torchvision==0.15.2; then
+	echo "[build.sh] torch wheel install failed; attempting normal install"
+	python -m pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 || echo "[build.sh] torch install failed"
+fi
+
+# Verify faiss can be imported now; if not, fail early with diagnostics
+echo "[build.sh] Verifying faiss import"
+python - <<'PY'
+import sys,traceback
+try:
+		import faiss
+		print('[build.sh] OK import faiss', getattr(faiss,'__version__','unknown'))
+except Exception as e:
+		print('[build.sh] FAILED to import faiss:')
+		traceback.print_exc()
+		import subprocess
+		print('\n[build.sh] pip show faiss-cpu:')
+		subprocess.run([sys.executable,'-m','pip','show','faiss-cpu'])
+		print('\n[build.sh] pip freeze:')
+		subprocess.run([sys.executable,'-m','pip','freeze'])
+		sys.exit(2)
+PY
 
 echo "[build.sh] Installing remaining requirements (using constraints.txt)"
 if [ -f constraints.txt ]; then
