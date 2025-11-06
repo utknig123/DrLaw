@@ -180,7 +180,7 @@ class RAGSystem:
         """Lazy load embedding model - memory intensive"""
         if self.embedding_model is None:
             print("Loading sentence transformer model...")
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')  # Smaller model
+            self.embedding_model = SentenceTransformer('sentence-transformers/paraphrase-albert-small-v2')  # Smaller model
     
     def load_llm(self):
         """Lazy load LLM"""
