@@ -1,9 +1,3 @@
-# Add these environment variables at the very top
-import os
-os.environ['TRANSFORMERS_OFFLINE'] = '0'  # Control download behavior
-os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
-os.environ['TRANSFORMERS_CACHE'] = '/tmp/transformers_cache'  # Specific cache location
-
 #supabase working 
 #google auth not working 
 #version 1 final(deployable)
@@ -186,16 +180,7 @@ class RAGSystem:
         """Lazy load embedding model - memory intensive"""
         if self.embedding_model is None:
             print("Loading sentence transformer model...")
-            # Use environment variable to prevent downloading all formats
-            os.environ['TRANSFORMERS_OFFLINE'] = '0'  # Ensure online for first download
-            os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
-            
-            # Load with specific settings to avoid multiple format downloads
-            self.embedding_model = SentenceTransformer(
-                'all-MiniLM-L6-v2',  # Even smaller and more efficient
-                device='cpu',
-                use_auth_token=False
-            )
+            self.embedding_model = SentenceTransformer('all-MiniLM-L3-v2')  # Smaller model
     
     def load_llm(self):
         """Lazy load LLM"""
@@ -358,20 +343,16 @@ def initialize_rag_system():
     """Initialize RAG system gradually to avoid memory peaks"""
     print("Initializing RAG system...")
     
-    # Process only essential PDFs first, then others gradually
-    essential_pdfs = ["constitution.pdf"]  # Start with just one
-    remaining_pdfs = ["1.pdf", "2.pdf","3.pdf","4.pdf","5.pdf","6.pdf",
-                     "7.pdf","8.pdf","9.pdf","10.pdf","11.pdf","12.pdf","13.pdf","14.pdf",
-                     "15.pdf","16.pdf","17.pdf","18.pdf","19.pdf","20.pdf","21.pdf","22.pdf",
-                     "23.pdf","24.pdf","25.pdf","26.pdf","27.pdf","28.pdf","29.pdf","30.pdf"]
+    pdf_files = ["constitution.pdf"]
+#                  "1.pdf", "2.pdf","3.pdf","4.pdf","5.pdf","6.pdf",
+#                 "7.pdf","8.pdf","9.pdf","10.pdf","11.pdf","12.pdf","13.pdf","14.pdf",
+#                 "15.pdf","16.pdf","17.pdf","18.pdf","19.pdf","20.pdf","21.pdf","22.pdf",
+#                "23.pdf","24.pdf","25.pdf","26.pdf","27.pdf","28.pdf","29.pdf","30.pdf"]
     
-    # Process essential PDF first
-    for pdf_file in essential_pdfs:
+    for pdf_file in pdf_files:
         print(f"Processing {pdf_file}...")
         result = rag.download_and_process_pdf(pdf_file)
         print(result)
-    
-    print("RAG system initialized with essential documents. Remaining PDFs will be processed on-demand.")
 
 # Database helper functions
 def get_user_by_email(email):
@@ -562,4 +543,6 @@ with app.app_context():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-    
+
+
+
