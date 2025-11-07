@@ -31,7 +31,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
 # CORS configuration (comma-separated origins in CORS_ORIGINS)
-cors_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:5000,https://drlaw.onrender.com,https://*.vercel.app")
+cors_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:3000")
 cors_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
 CORS(app, supports_credentials=True, origins=cors_origins)
 
@@ -41,7 +41,7 @@ key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
 # Get URLs from environment variables
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://drlaw.onrender.com')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 BACKEND_URL = os.environ.get('BACKEND_URL', 'https://drlaw.onrender.com')
 
 # Initialize OAuth
