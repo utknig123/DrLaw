@@ -2,6 +2,8 @@
 # exit on error
 set -o errexit
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo "[build.sh] Script dir: ${SCRIPT_DIR}"
 echo "[build.sh] Running build script in $(pwd)"
 echo "[build.sh] Python: $(python -V 2>&1)"
 
@@ -57,10 +59,14 @@ except Exception as e:
 PY
 
 echo "[build.sh] Installing remaining requirements (using constraints.txt)"
-if [ -f constraints.txt ]; then
-	python -m pip install --no-cache-dir -r requirements.txt -c constraints.txt || echo "[build.sh] requirements install failed"
+REQ_FILE="${SCRIPT_DIR}/requirements.txt"
+CONSTRAINTS_FILE="${SCRIPT_DIR}/constraints.txt"
+if [ -f "${CONSTRAINTS_FILE}" ]; then
+	echo "[build.sh] Using requirements: ${REQ_FILE} with constraints: ${CONSTRAINTS_FILE}"
+	python -m pip install --no-cache-dir -r "${REQ_FILE}" -c "${CONSTRAINTS_FILE}" || echo "[build.sh] requirements install failed"
 else
-	python -m pip install --no-cache-dir -r requirements.txt || echo "[build.sh] requirements install failed (no constraints)"
+	echo "[build.sh] Using requirements: ${REQ_FILE} (no constraints found)"
+	python -m pip install --no-cache-dir -r "${REQ_FILE}" || echo "[build.sh] requirements install failed (no constraints)"
 fi
 
 echo "[build.sh] Checking installed package compatibility with 'pip check'"
