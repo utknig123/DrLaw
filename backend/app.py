@@ -21,6 +21,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from supabase import create_client, Client
 from dotenv import load_dotenv
+import threading
 
 # Load environment variables
 load_dotenv()
@@ -153,8 +154,9 @@ class RAGSystem:
         self.index_path = os.path.join(self.storage_dir, "faiss_index.bin")
         self.metadata_path = os.path.join(self.storage_dir, "chunks_metadata.json")
         
-        # Load or create index
-        self.load_or_create_index()
+        # Initialize index as None - will be loaded lazily
+        self.index = None
+        self.index_initialized = False
         
         # Initialize API key only
         try:
@@ -200,6 +202,9 @@ class RAGSystem:
     
     def load_or_create_index(self):
         """Load existing index and chunks or create new ones"""
+        if self.index_initialized:
+            return
+            
         # NUCLEAR OPTION: Always create fresh index
         try:
             if os.path.exists(self.index_path):
@@ -218,6 +223,7 @@ class RAGSystem:
         quantizer = faiss.IndexFlatL2(dimension)
         self.index = faiss.IndexIVFFlat(quantizer, dimension, nlist)
         self.chunks = []
+        self.index_initialized = True
         print(f"Created fresh FAISS index with dimension: {dimension}")
     
     def save_index_and_chunks(self):
@@ -232,6 +238,10 @@ class RAGSystem:
     def download_and_process_pdf(self, pdf_name: str) -> str:
         """Download PDF from Supabase and process it with memory optimization"""
         try:
+            # Ensure index is initialized
+            if not self.index_initialized:
+                self.load_or_create_index()
+            
             self.load_pdf_processor()
             self.load_chunker()
             self.load_embedding_model()
@@ -292,15 +302,26 @@ class RAGSystem:
             if self.api_key_missing:
                 return ("Error generating answer: Missing GEMINI_API_KEY. "
                         "Set GEMINI_API_KEY in your .env or Render env vars, then restart.")
+            
+            # Ensure index is initialized
+            if not self.index_initialized:
+                self.load_or_create_index()
+            
             self.load_embedding_model()
             self.load_llm()
             
-            # Get relevant chunks
+            # Get relevant chunks (handle empty index case)
             query_embedding = self.embedding_model.encode([question])
-            scores, indices = self.index.search(query_embedding.astype(np.float32), top_k)
-            
-            # Get context from relevant chunks
-            context = " ".join([self.chunks[i]['text'] for i in indices[0] if i < len(self.chunks)])
+            if len(self.chunks) == 0 or not self.is_trained:
+                context = "No legal documents have been processed yet. The system is still initializing."
+            else:
+                try:
+                    scores, indices = self.index.search(query_embedding.astype(np.float32), top_k)
+                    # Get context from relevant chunks
+                    context = " ".join([self.chunks[i]['text'] for i in indices[0] if i < len(self.chunks)])
+                except Exception as e:
+                    print(f"Error searching index: {e}")
+                    context = "No legal documents have been processed yet. The system is still initializing."
             
             # Format conversation history
             conversation_context = ""
@@ -539,9 +560,31 @@ def chat_history():
     history = get_chat_history(session['user_id'])
     return jsonify([dict(row) for row in history])
 
-# Initialize RAG system on app startup - PROCESS PDF FROM SUPABASE
-with app.app_context():
-    initialize_rag_system()
+@app.route('/health')
+def health():
+    """Health check endpoint for Render"""
+    return jsonify({
+        'status': 'healthy',
+        'rag_initialized': rag.index_initialized if rag else False
+    }), 200
+
+# Initialize RAG system in background thread to avoid blocking server startup
+def initialize_rag_background():
+    """Initialize RAG system in background thread"""
+    import time
+    # Wait a moment to ensure server has started
+    time.sleep(2)
+    print("Starting RAG system initialization in background...")
+    with app.app_context():
+        try:
+            initialize_rag_system()
+            print("RAG system initialization completed successfully")
+        except Exception as e:
+            print(f"Error during RAG system initialization: {e}")
+
+# Start initialization in background thread
+init_thread = threading.Thread(target=initialize_rag_background, daemon=True)
+init_thread.start()
 
 # fix main guard
 if __name__ == '__main__':
