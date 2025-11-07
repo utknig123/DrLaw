@@ -31,7 +31,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
 # CORS configuration (comma-separated origins in CORS_ORIGINS)
-cors_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:10000,https://drlaw.onrender.com,https://*.vercel.app")
+cors_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:5000,https://drlaw.onrender.com,https://*.vercel.app")
 cors_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
 CORS(app, supports_credentials=True, origins=cors_origins)
 
@@ -545,5 +545,10 @@ with app.app_context():
 
 # fix main guard
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=10000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=5000)
+
+
+
+
+
