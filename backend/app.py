@@ -529,30 +529,65 @@ def logout():
 @app.route('/ask', methods=['POST'])
 @login_required
 def ask():
-    # Double check session even with @login_required decorator
-    if 'user_id' not in session:
-        return jsonify({'error': 'Authentication required'}), 401
-        
-    data = request.json
-    question = data.get('question')
-    language = data.get('language', 'en')
-    conversation_history = data.get('conversation_history', [])
-
-    if not question:
-        return jsonify({'error': 'No question provided'}), 400
-    
     try:
+        print("🔍 DEBUG: /ask route called")
+        
+        # Double check session even with @login_required decorator
+        if 'user_id' not in session:
+            print("🔍 DEBUG: No user_id in session")
+            return jsonify({'error': 'Authentication required'}), 401
+            
+        data = request.json
+        question = data.get('question')
+        language = data.get('language', 'en')
+        conversation_history = data.get('conversation_history', [])
+
+        if not question:
+            return jsonify({'error': 'No question provided'}), 400
+        
+        print(f"🔍 DEBUG: Processing question: {question}")
+        
+        # Test RAG system directly
+        print("🔍 DEBUG: Calling rag.query()...")
         answer = rag.query(question, conversation_history, language)
+        print(f"🔍 DEBUG: Got answer: {answer[:100]}...")
+        
         save_chat(session.get('user_id'), question, answer)
-    except ValueError as e:
-        # Handle missing user_id
-        return jsonify({'error': str(e)}), 401
+        
+        return jsonify({'question': question, 'answer': answer, 'language': language})
+        
     except Exception as e:
-        # Handle other errors (DB errors, etc)
-        print(f"Error in /ask route: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        print(f"🔍 DEBUG: ERROR in /ask route: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
     
-    return jsonify({'question': question, 'answer': answer, 'language': language})
+@app.route('/test', methods=['POST'])
+def test_chat():
+    """Public endpoint for testing chat without authentication"""
+    try:
+        print("🔍 DEBUG: /test endpoint called")
+        data = request.json
+        question = data.get('question', 'Test question')
+        language = data.get('language', 'en')
+        
+        print(f"🔍 DEBUG: Test question: {question}")
+        
+        # Test the RAG system directly
+        answer = rag.query(question, language=language)
+        print(f"🔍 DEBUG: Test answer: {answer[:100]}...")
+        
+        return jsonify({
+            'question': question, 
+            'answer': answer, 
+            'language': language,
+            'status': 'success'
+        })
+    except Exception as e:
+        print(f"🔍 DEBUG: ERROR in /test: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500   
 
 @app.route('/chat/history')
 @login_required
