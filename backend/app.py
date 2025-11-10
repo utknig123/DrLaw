@@ -1,6 +1,8 @@
+#drlaw v1: render deployed, chat not #working
+
 #supabase working 
 #google auth not working 
-#version 1 final(deployable) - FULLY OPTIMIZED
+#version 1 final(deployable)
 
 from flask_cors import CORS
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash
@@ -23,27 +25,15 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 import threading
 
-# Load environment variables FIRST
+# Load environment variables
 load_dotenv()
-
-# Configure environment to prevent excessive downloads and memory issues
-os.environ['TRANSFORMERS_OFFLINE'] = '0'
-os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
-os.environ['HF_HUB_DISABLE_PROGRESS_BARS'] = '1'
-os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Prevent tokenizer warnings
-
-# Download NLTK data at startup
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    print("📥 Downloading NLTK punkt...")
-    nltk.download('punkt', quiet=True)
 
 # Initialize Flask app
 app = Flask(__name__)
+# Prefer configured secret for stable sessions across restarts
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
-# CORS configuration
+# CORS configuration (comma-separated origins in CORS_ORIGINS)
 cors_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:3000")
 cors_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
 CORS(app, supports_credentials=True, origins=cors_origins)
@@ -69,6 +59,7 @@ google = oauth.register(
     authorize_params=None,
     api_base_url='https://www.googleapis.com/oauth2/v1/',
     client_kwargs={'scope': 'openid email profile',
+                   # Redirect to backend callback to complete OAuth
                    'redirect_uri': f"{BACKEND_URL}/login/google/authorize"},
 )
 
@@ -77,22 +68,28 @@ API_KEY = os.environ.get("GEMINI_API_KEY") or None
 
 # Translation function using direct API calls
 def translate_text(text, dest_language='hi', src_language='en'):
-    """Simple translation function using Google Translate API directly"""
+    """
+    Simple translation function using Google Translate API directly
+    """
     try:
+        # URL encode the text
         encoded_text = urllib.parse.quote(text)
+        
+        # Google Translate API endpoint
         url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl={src_language}&tl={dest_language}&dt=t&q={encoded_text}"
         
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
+            # Parse the JSON response
             translation_data = response.json()
             if translation_data and len(translation_data) > 0:
                 translated_text = translation_data[0][0][0]
                 return translated_text
         
-        return text
+        return text  # Return original text if translation fails
     except Exception as e:
-        print(f"⚠️ Translation error: {e}")
-        return text
+        print(f"Translation error: {e}")
+        return text  # Return original text on any error
 
 # Language codes and their names
 LANGUAGES = {
@@ -107,14 +104,19 @@ class PDFProcessor:
             reader = PyPDF2.PdfReader(file)
             text = ""
             for page in reader.pages:
+                # handle pages where extract_text() may return None
                 page_text = page.extract_text() or ""
                 text += page_text + "\n"
         return text
 
 class TextChunker:
     """Splits text into chunks"""
-    def __init__(self, chunk_size: int = 500):
+    def _init_(self, chunk_size: int = 500):  # Reduced chunk size for memory
         self.chunk_size = chunk_size
+        try:
+            nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            nltk.download('punkt', quiet=True)
     
     def chunk_text(self, text: str) -> list:
         sentences = nltk.sent_tokenize(text)
@@ -131,164 +133,127 @@ class TextChunker:
         return chunks
 
 class RAGSystem:
-    """FULLY OPTIMIZED RAG system - minimal downloads & memory usage"""
-    
-    _instance = None
-    
-    def __new__(cls, api_key: str = None, supabase_client=None):  # ADD PARAMETERS HERE
-        if cls._instance is None:
-            cls._instance = super(RAGSystem, cls).__new__(cls)
-            # Initialize only once when instance is created
-            cls._instance._initialize(api_key, supabase_client)
-        return cls._instance
-    
-    def _initialize(self, api_key: str = None, supabase_client=None):
-        """Private initialization method"""
-        if hasattr(self, '_initialized') and self._initialized:
-            return
-            
-        print("🔄 Initializing OPTIMIZED RAG system...")
+    """RAG system with memory optimization"""
+    def _init_(self, api_key: str = None, supabase_client=None):
+        if api_key is None:
+            api_key = API_KEY
         
-        self.api_key = api_key
-        self.supabase = supabase_client
-        self.pdf_bucket = "legal_pdfs"
-        
-        # Core components - loaded on demand
+        # Lazy loading components
         self.pdf_processor = None
         self.chunker = None
         self.embedding_model = None
         self.llm = None
         self.index = None
         self.chunks = []
-        
-        # Status flags
         self.is_trained = False
+        self.supabase = supabase_client
+        self.pdf_bucket = "legal_pdfs"
         self.api_key_missing = False
-        self.initialization_complete = False
-        self.initialization_error = None
         
-        # Storage setup with cleanup
-        self.storage_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "storage")
+        # Storage setup
+        self.storage_dir = os.path.join(os.path.dirname(os.path.abspath(_file_)), "storage")
         os.makedirs(self.storage_dir, exist_ok=True)
         self.index_path = os.path.join(self.storage_dir, "faiss_index.bin")
         self.metadata_path = os.path.join(self.storage_dir, "chunks_metadata.json")
-        self.model_cache_dir = os.path.join(self.storage_dir, "model_cache")
         
-        # Clean up any temporary files on startup
-        self._cleanup_temp_files()
+        # Initialize index as None - will be loaded lazily
+        self.index = None
+        self.index_initialized = False
         
-        # Configure Gemini only if API key exists
-        if api_key:
-            try:
-                genai.configure(api_key=api_key)
-                print("✅ Gemini configured successfully")
-            except Exception as e:
-                print(f"⚠️ Gemini config failed: {e}")
-                self.api_key_missing = True
-        else:
-            self.api_key_missing = True
-            print("⚠️ GEMINI_API_KEY not set")
-        
-        self._initialized = True
-        print("✅ RAG system base initialization complete")    
-    def _cleanup_temp_files(self):
-        """Clean up temporary files to save storage"""
+        # Initialize API key only
         try:
-            # Remove any leftover PDF files
-            for file in os.listdir(self.storage_dir):
-                if file.endswith('.pdf'):
-                    os.remove(os.path.join(self.storage_dir, file))
-                    print(f"🧹 Cleaned up temporary file: {file}")
+            if not api_key:
+                self.api_key_missing = True
+                print("Warning: GEMINI_API_KEY not set. Set GEMINI_API_KEY in environment.")
+            else:
+                genai.configure(api_key=api_key)
         except Exception as e:
-            print(f"⚠️ Cleanup warning: {e}")
+            print(f"Warning: genai init failed: {e}")
+    
+    def load_pdf_processor(self):
+        """Lazy load PDF processor"""
+        if self.pdf_processor is None:
+            self.pdf_processor = PDFProcessor()
+    
+    def load_chunker(self):
+        """Lazy load chunker"""
+        if self.chunker is None:
+            self.chunker = TextChunker()
     
     def load_embedding_model(self):
-        """Load ONLY the PyTorch model - prevent multiple format downloads"""
-        if self.embedding_model is not None:
-            return
-            
-        print("🔄 Loading sentence transformer model (optimized download)...")
-        try:
-            # Use your preferred smaller model
-            model_name = 'paraphrase-albert-small-v2'
-            
-            # Create cache directory
-            os.makedirs(self.model_cache_dir, exist_ok=True)
-            
-            # Load with cache to prevent re-downloads
-            self.embedding_model = SentenceTransformer(
-                model_name,
-                cache_folder=self.model_cache_dir,
-                device='cpu'
-            )
-            
-            print(f"✅ Embedding model loaded: {model_name}")
-            print(f"📏 Model dimension: {self.embedding_model.get_sentence_embedding_dimension()}")
-            
-        except Exception as e:
-            error_msg = f"❌ Failed to load embedding model: {e}"
-            print(error_msg)
-            self.initialization_error = error_msg
-            raise
+        """Lazy load embedding model - memory intensive"""
+        if self.embedding_model is None:
+            print("Loading sentence transformer model...")
+
+            # Force specific model format to prevent downloading all formats
+            #os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
+            #os.environ['TRANSFORMERS_OFFLINE'] = '0'
+
+            self.embedding_model = SentenceTransformer('paraphrase-albert-small-v2'
+                                                      # device='cpu'
+                                                       )
+                                                        # Smaller model
+            print("Model loaded successfully")
     
     def load_llm(self):
-        """Load Gemini - API based, no model downloads"""
-        if self.llm is not None:
-            return
-            
+        """Lazy load LLM"""
         if self.api_key_missing:
-            raise RuntimeError("GEMINI_API_KEY is missing")
-        
-        try:
+            raise RuntimeError("GEMINI_API_KEY is missing. Please set it in your environment.")
+        if self.llm is None:
             self.llm = genai.GenerativeModel('gemini-2.0-flash')
-            print("✅ LLM configured successfully (API-based)")
-        except Exception as e:
-            print(f"❌ Failed to configure LLM: {e}")
-            raise
     
     def load_or_create_index(self):
-        """Load or create FAISS index"""
-        if self.index is not None:
+        """Load existing index and chunks or create new ones"""
+        if self.index_initialized:
             return
             
-        print("🔄 Setting up FAISS index...")
+        # NUCLEAR OPTION: Always create fresh index
         try:
-            # Ensure embedding model is loaded first
-            self.load_embedding_model()
-            
-            # Get dimension from model
-            dimension = self.embedding_model.get_sentence_embedding_dimension()
-            
-            # Create simple index (memory efficient)
-            self.index = faiss.IndexFlatL2(dimension)
-            self.chunks = []
-            
-            print(f"✅ FAISS index created with dimension: {dimension}")
+            if os.path.exists(self.index_path):
+                os.remove(self.index_path)
+            if os.path.exists(self.metadata_path):
+                os.remove(self.metadata_path)
+        except:
+            pass
+        
+        # Always create new index with correct dimensions
+        self.load_embedding_model()
+        test_embedding = self.embedding_model.encode(["test"])
+        dimension = test_embedding.shape[1]
+        
+        nlist = 50
+        quantizer = faiss.IndexFlatL2(dimension)
+        self.index = faiss.IndexIVFFlat(quantizer, dimension, nlist)
+        self.chunks = []
+        self.index_initialized = True
+        print(f"Created fresh FAISS index with dimension: {dimension}")
+    
+    def save_index_and_chunks(self):
+        """Save the FAISS index and chunks metadata"""
+        try:
+            faiss.write_index(self.index, self.index_path)
+            with open(self.metadata_path, 'w') as f:
+                json.dump(self.chunks, f)
         except Exception as e:
-            print(f"❌ Failed to create FAISS index: {e}")
-            self.initialization_error = f"FAISS index failed: {e}"
-            raise
+            print(f"Error saving index: {e}")
     
     def download_and_process_pdf(self, pdf_name: str) -> str:
-        """Download and process PDF from Supabase with memory optimization"""
-        temp_path = None
+        """Download PDF from Supabase and process it with memory optimization"""
         try:
-            print(f"📥 Processing {pdf_name}...")
+            # Ensure index is initialized
+            if not self.index_initialized:
+                self.load_or_create_index()
             
-            # Lazy load components
-            if self.pdf_processor is None:
-                self.pdf_processor = PDFProcessor()
-            if self.chunker is None:
-                self.chunker = TextChunker()
-            
-            # Ensure index is ready
-            self.load_or_create_index()
+            self.load_pdf_processor()
+            self.load_chunker()
+            self.load_embedding_model()
             
             # Check if already processed
             if any(pdf_name in chunk.get('source', '') for chunk in self.chunks):
                 return f"PDF {pdf_name} was already processed."
             
             # Download PDF from Supabase
+            print(f"Downloading {pdf_name} from Supabase...")
             pdf_data = self.supabase.storage.from_(self.pdf_bucket).download(pdf_name)
             
             # Save to temporary file
@@ -296,154 +261,81 @@ class RAGSystem:
             with open(temp_path, 'wb') as f:
                 f.write(pdf_data)
             
-            # Process the PDF in memory-efficient way
+            # Process the PDF
             text = self.pdf_processor.extract_text(temp_path)
             new_chunks = self.chunker.chunk_text(text)
             
-            # Process chunks in very small batches to save memory
-            batch_size = 2  # Even smaller batches
-            total_processed = 0
-            
+            # Process chunks in batches to reduce memory peaks
+            batch_size = 5
             for i in range(0, len(new_chunks), batch_size):
                 batch_chunks = new_chunks[i:i+batch_size]
-                
-                # Encode batch
                 embeddings = self.embedding_model.encode(batch_chunks)
                 
-                # Add to index
-                self.index.add(embeddings.astype(np.float32))
+                # Train index if needed
+                if not self.is_trained and len(embeddings) >= 50:
+                    self.index.train(embeddings.astype(np.float32))
+                    self.is_trained = True
+                
+                # Add to index if trained
+                if self.is_trained:
+                    self.index.add(embeddings.astype(np.float32))
                 
                 # Add metadata
                 chunk_metadata = [{'text': chunk, 'source': pdf_name} for chunk in batch_chunks]
                 self.chunks.extend(chunk_metadata)
-                total_processed += len(batch_chunks)
-                
-                # Clear memory
-                del embeddings
             
-            self.is_trained = True
-            
-            # Save index and chunks
             self.save_index_and_chunks()
             
-            result = f"✅ Successfully processed {total_processed} chunks from {pdf_name}"
-            print(result)
-            return result
+            # Clean up temporary file
+            os.remove(temp_path)
+            
+            return f"Successfully processed {len(new_chunks)} chunks from {pdf_name}"
             
         except Exception as e:
-            error_msg = f"❌ Error processing PDF {pdf_name}: {str(e)}"
-            print(error_msg)
-            return error_msg
-        finally:
-            # Always clean up temporary file
-            if temp_path and os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except:
-                    pass
-    
-    def save_index_and_chunks(self):
-        """Save FAISS index and chunks metadata"""
-        try:
-            if self.index is not None:
-                faiss.write_index(self.index, self.index_path)
-            if self.chunks:
-                with open(self.metadata_path, 'w') as f:
-                    json.dump(self.chunks, f)
-        except Exception as e:
-            print(f"⚠️ Error saving index: {e}")
-    
-    def load_saved_index(self):
-        """Load saved index if exists"""
-        try:
-            if os.path.exists(self.index_path) and os.path.exists(self.metadata_path):
-                print("🔄 Loading saved index...")
-                self.index = faiss.read_index(self.index_path)
-                with open(self.metadata_path, 'r') as f:
-                    self.chunks = json.load(f)
-                self.is_trained = True
-                print("✅ Saved index loaded successfully")
-                return True
-        except Exception as e:
-            print(f"⚠️ Error loading saved index: {e}")
-        return False
-    
-    def initialize_full_system(self):
-        """Initialize the complete RAG system with error handling"""
-        if self.initialization_complete:
-            return True
-            
-        try:
-            print("🚀 Starting FULL RAG system initialization...")
-            
-            # Step 1: Load embedding model (this downloads the model)
-            self.load_embedding_model()
-            
-            # Step 2: Setup index
-            self.load_or_create_index()
-            
-            # Step 3: Try to load saved index first (saves processing time)
-            if self.load_saved_index():
-                print("✅ Using saved index - no PDF processing needed")
-            else:
-                # Step 4: Process PDFs if no saved index
-                print("📄 Processing PDFs for the first time...")
-                pdf_files = ["constitution.pdf"]
-                for pdf_file in pdf_files:
-                    result = self.download_and_process_pdf(pdf_file)
-                    print(f"📋 {result}")
-            
-            self.initialization_complete = True
-            print("🎉 RAG system fully initialized and ready!")
-            return True
-            
-        except Exception as e:
-            self.initialization_error = f"Full initialization failed: {e}"
-            print(f"❌ RAG system initialization failed: {e}")
-            return False
+            # Clean up if temp file was created
+            temp_path = os.path.join(self.storage_dir, pdf_name)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return f"Error processing PDF from Supabase: {str(e)}"
     
     def query(self, question: str, conversation_history=None, language='en', top_k: int = 3) -> str:
-        """Query the system with comprehensive error handling"""
+        """Query the system with conversation history and language support"""
         try:
             if self.api_key_missing:
-                return ("❌ Error: Missing GEMINI_API_KEY. "
-                        "Please set GEMINI_API_KEY in your environment variables.")
+                return ("Error generating answer: Missing GEMINI_API_KEY. "
+                        "Set GEMINI_API_KEY in your .env or Render env vars, then restart.")
             
-            # Ensure system is initialized
-            if not self.initialization_complete:
-                return "🔄 System is still initializing. Please try again in a moment."
+            # Ensure index is initialized
+            if not self.index_initialized:
+                self.load_or_create_index()
             
-            # Load LLM only when needed (no downloads here)
+            self.load_embedding_model()
             self.load_llm()
             
-            # Get relevant chunks with error handling
+            # Get relevant chunks (handle empty index case)
             query_embedding = self.embedding_model.encode([question])
-            
             if len(self.chunks) == 0 or not self.is_trained:
-                context = "No legal documents have been processed yet."
+                context = "No legal documents have been processed yet. The system is still initializing."
             else:
                 try:
                     scores, indices = self.index.search(query_embedding.astype(np.float32), top_k)
-                    context_chunks = []
-                    for i in indices[0]:
-                        if i < len(self.chunks):
-                            context_chunks.append(self.chunks[i]['text'])
-                    context = " ".join(context_chunks[:3])  # Limit context length
+                    # Get context from relevant chunks
+                    context = " ".join([self.chunks[i]['text'] for i in indices[0] if i < len(self.chunks)])
                 except Exception as e:
-                    print(f"⚠️ Error searching index: {e}")
-                    context = "No legal documents available for search."
+                    print(f"Error searching index: {e}")
+                    context = "No legal documents have been processed yet. The system is still initializing."
             
-            # Format conversation history (limit to save memory)
+            # Format conversation history
             conversation_context = ""
             if conversation_history:
                 conversation_context = "Previous conversation:\n"
-                for message in conversation_history[-4:]:  # Last 4 messages only
+                for message in conversation_history:
                     role = "User" if message.get('role') == 'user' else "DrLAW"
                     conversation_context += f"{role}: {message.get('content')}\n"
             
-            # Generate answer
+            # Generate answer using Gemini
             output_language = LANGUAGES.get(language, 'English')
-            prompt = f"""You are DrLAW, a legal AI advisor. Provide detailed legal advice based on:
+            prompt = f"""You are DrLAW, a legal AI advisor. Your task is to provide detailed legal advice based on the following context:
 
 CONTEXT FROM LEGAL DOCUMENTS:
 {context}
@@ -452,7 +344,16 @@ CONTEXT FROM LEGAL DOCUMENTS:
 
 Current Question: {question}
 
-Provide clear, structured legal advice in {output_language}. Use simple language and focus on practical guidance."""
+Format your response with clear sections. Use HTML formatting. Include:
+1. Brief greeting and introduction
+2. Clear, concise answer (200-300 words)
+3. Detailed explanation with HTML tables for:
+   - Legal Roadmap
+   - Required Documentation  
+   - Applicable Laws
+4. Brief conclusion
+
+Response should be in {output_language}."""
 
             response = self.llm.generate_content(prompt)
             answer_text = response.text
@@ -462,15 +363,23 @@ Provide clear, structured legal advice in {output_language}. Use simple language
                 answer_text = translate_text(answer_text, language, 'en')
             
             return answer_text
-            
         except Exception as e:
-            error_msg = f"❌ Error generating answer: {str(e)}"
-            print(error_msg)
-            return error_msg
+            return f"Error generating answer: {str(e)}"
 
-# Initialize RAG system immediately
-print("🚀 Creating RAG system instance...")
+# Initialize RAG system with Supabase client
 rag = RAGSystem(api_key=API_KEY, supabase_client=supabase)
+
+# Process PDFs from Supabase storage at startup
+def initialize_rag_system():
+    """Initialize RAG system by processing PDFs from Supabase"""
+    print("Initializing RAG system...")
+    
+    pdf_files = ["constitution.pdf"]
+    
+    for pdf_file in pdf_files:
+        print(f"Processing {pdf_file} from Supabase...")
+        result = rag.download_and_process_pdf(pdf_file)
+        print(result)
 
 # Database helper functions
 def get_user_by_email(email):
@@ -521,24 +430,6 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
-
-# Initialize RAG system in background with proper timing
-def initialize_rag_background():
-    """Initialize RAG system in background with proper error handling"""
-    time.sleep(5)  # Wait longer for server to fully start
-    print("🔄 Starting background RAG initialization...")
-    try:
-        success = rag.initialize_full_system()
-        if success:
-            print("✅ Background RAG initialization completed successfully")
-        else:
-            print(f"❌ Background RAG initialization failed: {rag.initialization_error}")
-    except Exception as e:
-        print(f"❌ Background RAG initialization crashed: {e}")
-
-# Start background initialization
-init_thread = threading.Thread(target=initialize_rag_background, daemon=True)
-init_thread.start()
 
 # Flask routes
 @app.route('/')
@@ -595,6 +486,7 @@ def signup():
 
 @app.route('/login/google')
 def google_login():
+    # Ensure the redirect URI matches the one registered in Google Console and client config
     redirect_uri = f"{BACKEND_URL}/login/google/authorize"
     return google.authorize_redirect(redirect_uri)
 
@@ -630,6 +522,7 @@ def google_authorize():
 @app.route('/logout', methods=['GET','POST'])
 def logout():
     session.clear()
+    # On POST from frontend fetch, return JSON; on GET (direct link), redirect
     if request.method == 'POST':
         return jsonify({'status': 'ok'})
     flash('Logged out successfully', 'success')
@@ -639,7 +532,11 @@ def logout():
 @login_required
 def ask():
     try:
+        print("🔍 DEBUG: /ask route called")
+        
+        # Double check session even with @login_required decorator
         if 'user_id' not in session:
+            print("🔍 DEBUG: No user_id in session")
             return jsonify({'error': 'Authentication required'}), 401
             
         data = request.json
@@ -650,46 +547,37 @@ def ask():
         if not question:
             return jsonify({'error': 'No question provided'}), 400
         
-        # Check if RAG system is ready
-        if not rag.initialization_complete:
-            return jsonify({
-                'error': 'System is still initializing. Please try again in 30 seconds.',
-                'status': 'initializing'
-            }), 503
+        print(f"🔍 DEBUG: Processing question: {question}")
         
-        # Process the question
+        # Test RAG system directly
+        print("🔍 DEBUG: Calling rag.query()...")
         answer = rag.query(question, conversation_history, language)
+        print(f"🔍 DEBUG: Got answer: {answer[:100]}...")
         
-        # Save to chat history
         save_chat(session.get('user_id'), question, answer)
         
-        return jsonify({
-            'question': question, 
-            'answer': answer, 
-            'language': language,
-            'status': 'success'
-        })
+        return jsonify({'question': question, 'answer': answer, 'language': language})
         
     except Exception as e:
-        print(f"❌ Error in /ask route: {e}")
+        print(f"🔍 DEBUG: ERROR in /ask route: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
-
+    
 @app.route('/test', methods=['POST'])
 def test_chat():
     """Public endpoint for testing chat without authentication"""
     try:
+        print("🔍 DEBUG: /test endpoint called")
         data = request.json
         question = data.get('question', 'Test question')
         language = data.get('language', 'en')
         
-        # Check if RAG system is ready
-        if not rag.initialization_complete:
-            return jsonify({
-                'error': 'System initializing',
-                'status': 'initializing'
-            }), 503
+        print(f"🔍 DEBUG: Test question: {question}")
         
+        # Test the RAG system directly
         answer = rag.query(question, language=language)
+        print(f"🔍 DEBUG: Test answer: {answer[:100]}...")
         
         return jsonify({
             'question': question, 
@@ -698,7 +586,10 @@ def test_chat():
             'status': 'success'
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"🔍 DEBUG: ERROR in /test: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500   
 
 @app.route('/chat/history')
 @login_required
@@ -709,35 +600,30 @@ def chat_history():
 @app.route('/health')
 def health():
     """Health check endpoint for Render"""
-    status_info = {
-        'status': 'healthy',
-        'rag_initialized': rag.initialization_complete,
-        'rag_ready': rag.initialization_complete and rag.is_trained,
-        'api_key_configured': not rag.api_key_missing,
-        'chunks_loaded': len(rag.chunks) if rag.chunks else 0,
-        'error': rag.initialization_error
-    }
-    
-    status_code = 200 if rag.initialization_complete else 503
-    return jsonify(status_info), status_code
-
-@app.route('/status')
-def status():
-    """Detailed status endpoint"""
     return jsonify({
-        'rag_system': {
-            'initialized': rag.initialization_complete,
-            'trained': rag.is_trained,
-            'chunks_loaded': len(rag.chunks) if rag.chunks else 0,
-            'api_key_configured': not rag.api_key_missing,
-            'error': rag.initialization_error
-        },
-        'server': 'running'
-    })
+        'status': 'healthy',
+        'rag_initialized': rag.index_initialized if rag else False
+    }), 200
 
-# Main entry point
-if __name__ == '__main__':
+# Initialize RAG system in background thread to avoid blocking server startup
+def initialize_rag_background():
+    """Initialize RAG system in background thread"""
+    import time
+    # Wait a moment to ensure server has started
+    time.sleep(2)
+    print("Starting RAG system initialization in background...")
+    with app.app_context():
+        try:
+            initialize_rag_system()
+            print("RAG system initialization completed successfully")
+        except Exception as e:
+            print(f"Error during RAG system initialization: {e}")
+
+# Start initialization in background thread
+init_thread = threading.Thread(target=initialize_rag_background, daemon=True)
+init_thread.start()
+
+# fix main guard
+if __name__ == '_main_':
     port = int(os.environ.get("PORT", 10000))
-    print(f"🚀 Starting Flask server on port {port}...")
-    print(f"🔧 RAG system status: {'Ready' if rag.initialization_complete else 'Initializing...'}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0',port=port)
