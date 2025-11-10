@@ -134,15 +134,17 @@ class RAGSystem:
     """FULLY OPTIMIZED RAG system - minimal downloads & memory usage"""
     
     _instance = None
-    _initialized = False
     
-    def __new__(cls):
+    def __new__(cls, api_key: str = None, supabase_client=None):  # ADD PARAMETERS HERE
         if cls._instance is None:
             cls._instance = super(RAGSystem, cls).__new__(cls)
+            # Initialize only once when instance is created
+            cls._instance._initialize(api_key, supabase_client)
         return cls._instance
     
-    def __init__(self, api_key: str = None, supabase_client=None):
-        if self._initialized:
+    def _initialize(self, api_key: str = None, supabase_client=None):
+        """Private initialization method"""
+        if hasattr(self, '_initialized') and self._initialized:
             return
             
         print("🔄 Initializing OPTIMIZED RAG system...")
@@ -188,8 +190,7 @@ class RAGSystem:
             print("⚠️ GEMINI_API_KEY not set")
         
         self._initialized = True
-        print("✅ RAG system base initialization complete")
-    
+        print("✅ RAG system base initialization complete")    
     def _cleanup_temp_files(self):
         """Clean up temporary files to save storage"""
         try:
