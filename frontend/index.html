@@ -362,15 +362,6 @@
     }
   </style>
   <script src="config.js"></script>
-  <script>
-    // If this static frontend is loaded, redirect users to the backend app hosted on Render
-    (function() {
-      var cfg = window.APP_CONFIG || {};
-      if (cfg.backendUrl) {
-        window.location.replace(cfg.backendUrl);
-      }
-    })();
-  </script>
 </head>
 <body>
   <div class="container">
@@ -425,22 +416,26 @@
 
     <div class="sidebar-profile">
       <img src="utkprofile.jpg" alt="Profile" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2238%22 height=%2238%22 viewBox=%220 0 38 38%22><circle cx=%2219%22 cy=%2219%22 r=%2219%22 fill=%22%23404040%22 /><circle cx=%2219%22 cy=%2216%22 r=%227%22 fill=%22%23d9d9d9%22 /><path d=%22M6,34 C6,25 32,25 32,34%22 fill=%22%23d9d9d9%22 /></svg>';">
-      <div class="profile-name">{{ session.username }}</div>
+      <div class="profile-name" id="username">User</div>
     </div>
 
-    <a href="{{ url_for('logout') }}" class="logout-btn">
+    <a href="#" id="logout-btn" class="logout-btn">
       <i class="fas fa-sign-out-alt"></i>
       <div class="logout-text">Logout</div>
     </a>
   </div>
 
   <script>
+    // Get backend URL from config
+    const BACKEND_URL = window.APP_CONFIG?.backendUrl || 'https://drlaw-backend.onrender.com';
+    
     const askForm = document.getElementById('ask-form');
     const questionInput = document.getElementById('question-input');
     const conversationContainer = document.getElementById('conversation-container');
     const languageToggle = document.getElementById('language-toggle');
     const languageDropdown = document.getElementById('language-dropdown');
     const languageOptions = document.querySelectorAll('.language-option');
+    const logoutBtn = document.getElementById('logout-btn');
     
     let currentLanguage = 'en';
     let conversationHistory = [];
@@ -512,7 +507,17 @@
     // Load chat history from server
     async function loadChatHistory() {
       try {
-        const response = await fetch('${BACKEND_URL}/chat/history');
+        const response = await fetch(`${BACKEND_URL}/chat/history`, {
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Not logged in, redirect to login
+            window.location.href = '/login.html';
+            return;
+          }
+          throw new Error('Failed to load chat history');
+        }
         const history = await response.json();
         
         if (history && history.length > 0) {
@@ -554,7 +559,7 @@
       conversationContainer.scrollTop = conversationContainer.scrollHeight;
       
       try {
-        const response = await fetch('/ask', {
+        const response = await fetch(`${BACKEND_URL}/ask`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -564,7 +569,17 @@
             language: currentLanguage,
             conversation_history: conversationHistory
           }),
+          credentials: 'include'
         });
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Not logged in, redirect to login
+            window.location.href = '/login.html';
+            return;
+          }
+          throw new Error('Failed to get response');
+        }
         
         const data = await response.json();
         
@@ -589,6 +604,48 @@
         console.error('Error:', error);
       }
     });
+
+    // Logout functionality
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        try {
+          const response = await fetch(`${BACKEND_URL}/logout`, {
+            method: 'POST',
+            credentials: 'include'
+          });
+          
+          // Clear any local storage
+          localStorage.removeItem('userToken');
+          sessionStorage.removeItem('userToken');
+          
+          // Redirect to login page
+          window.location.href = '/login.html';
+        } catch (error) {
+          console.error('Logout error:', error);
+          // Still redirect even if logout fails
+          window.location.href = '/login.html';
+        }
+      });
+    }
+
+    // Check if user is logged in on page load
+    async function checkAuth() {
+      try {
+        const response = await fetch(`${BACKEND_URL}/chat/history`, {
+          credentials: 'include'
+        });
+        if (response.status === 401) {
+          // Not logged in, redirect to login
+          window.location.href = '/login.html';
+        }
+      } catch (error) {
+        console.error('Auth check error:', error);
+      }
+    }
+    
+    // Run auth check on page load
+    window.addEventListener('DOMContentLoaded', checkAuth);
   </script>
 </body>
 </html>

@@ -251,17 +251,16 @@ input {
 <body>
   <div class="container">
     <div class="background-box"></div>
-    <img class="background-image" src="static/Background.jpg" alt="Background Image"/>
+    <img class="background-image" src="Background.jpg" alt="Background Image"/>
     
     
     <div class="form-box"></div>
-    <img class="logo" src="static/Logo.jpg" alt="Logo"/>
+    <img class="logo" src="Logo.jpg" alt="Logo"/>
     
     
-    <!-- Flash messages from Flask -->
-    
+    <div id="alert-container"></div>
 
-    <form action="{{ url_for('signup') }}" method="post">
+    <form id="signup-form">
       <div class="form-content">
         <div class="input-group">
           <label class="label">Username</label>
@@ -286,8 +285,7 @@ input {
       <div class="credit">by Utk</div>
 
       <div class="login-text">
-        <span class="already">Already have an account? </span>
-        
+        <span class="already">Already have an account? <a href="/login.html">Login</a></span>
       </div>
 
       <div class="button-section">
@@ -295,15 +293,68 @@ input {
           <div class="btn-text">Sign Up</div>
         </button>
         <div class="or">or</div>
-        <a href="{{ url_for('google_login') }}" class="google-btn">
+        <a href="#" id="google-signup-btn" class="google-btn">
           <div class="google-box">
             <div class="google-text">Continue with Google</div>
           </div>
-          <img class="Google" src="static/Google.jpg" alt="Google"/>
-          
+          <img class="Google" src="Google.jpg" alt="Google"/>
         </a>
       </div>
     </form>
   </div>
+  
+  <script src="config.js"></script>
+  <script>
+    const BACKEND_URL = window.APP_CONFIG?.backendUrl || 'https://drlaw-backend.onrender.com';
+    const signupForm = document.getElementById('signup-form');
+    const googleSignupBtn = document.getElementById('google-signup-btn');
+    const alertContainer = document.getElementById('alert-container');
+    
+    function showAlert(message, type) {
+      alertContainer.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+      setTimeout(() => {
+        alertContainer.innerHTML = '';
+      }, 5000);
+    }
+    
+    if (signupForm) {
+      signupForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const username = document.getElementById('username').value;
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        
+        try {
+          const formData = new FormData();
+          formData.append('username', username);
+          formData.append('email', email);
+          formData.append('password', password);
+          
+          const response = await fetch(`${BACKEND_URL}/signup`, {
+            method: 'POST',
+            body: formData,
+            credentials: 'include'
+          });
+          
+          if (response.ok) {
+            window.location.href = '/index.html';
+          } else {
+            const data = await response.text();
+            showAlert('Signup failed. Email may already be registered.', 'danger');
+          }
+        } catch (error) {
+          console.error('Signup error:', error);
+          showAlert('Signup failed. Please try again.', 'danger');
+        }
+      });
+    }
+    
+    if (googleSignupBtn) {
+      googleSignupBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        window.location.href = `${BACKEND_URL}/login/google`;
+      });
+    }
+  </script>
 </body>
 </html>
