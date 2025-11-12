@@ -1,0 +1,20 @@
+# Create .dockerignore file
+@"
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.git
+.gitignore
+.DS_Store
+node_modules
+storage/
+"@ | Out-File -FilePath "backend/.dockerignore" -Encoding UTF8

@@ -1,0 +1,23 @@
+{
+  "name": "drlaw-vercel",
+  "version": "1.0.0",
+  "description": "DrLAW - Legal AI Assistant",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.38.0",
+    "google-auth-library": "^9.0.0",
+    "nltk": "^2.0.0",
+    "faiss-node": "^0.3.0",
+    "@xenova/transformers": "^2.5.0",
+    "@google/generative-ai": "^0.21.0",
+    "pdf-parse": "^1.1.1",
+    "cookie": "^0.5.0",
+    "iron-session": "^10.0.0",
+    "crypto": "^1.0.1"
+  },
+  "devDependencies": {
+    "vercel": "^28.0.0"
+  }
+}

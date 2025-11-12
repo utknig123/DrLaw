@@ -111,7 +111,7 @@ class PDFProcessor:
 
 class TextChunker:
     """Splits text into chunks"""
-    def _init_(self, chunk_size: int = 500):  # Reduced chunk size for memory
+    def __init__(self, chunk_size: int = 500):  # Reduced chunk size for memory
         self.chunk_size = chunk_size
         try:
             nltk.data.find('tokenizers/punkt')
@@ -134,10 +134,10 @@ class TextChunker:
 
 class RAGSystem:
     """RAG system with memory optimization"""
-    def _init_(self, api_key: str = None, supabase_client=None):
+    def __init__(self, api_key: str = None, supabase_client=None):
         if api_key is None:
             api_key = API_KEY
-        
+
         # Lazy loading components
         self.pdf_processor = None
         self.chunker = None
@@ -149,17 +149,17 @@ class RAGSystem:
         self.supabase = supabase_client
         self.pdf_bucket = "legal_pdfs"
         self.api_key_missing = False
-        
+
         # Storage setup
-        self.storage_dir = os.path.join(os.path.dirname(os.path.abspath(_file_)), "storage")
+        self.storage_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "storage")
         os.makedirs(self.storage_dir, exist_ok=True)
         self.index_path = os.path.join(self.storage_dir, "faiss_index.bin")
         self.metadata_path = os.path.join(self.storage_dir, "chunks_metadata.json")
-        
+
         # Initialize index as None - will be loaded lazily
         self.index = None
         self.index_initialized = False
-        
+
         # Initialize API key only
         try:
             if not api_key:
@@ -624,6 +624,6 @@ init_thread = threading.Thread(target=initialize_rag_background, daemon=True)
 init_thread.start()
 
 # fix main guard
-if __name__ == '_main_':
+if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0',port=port)
+    app.run(host='0.0.0.0', port=port)
